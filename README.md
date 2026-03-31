@@ -1,4 +1,4 @@
-﻿# mm-cli
+﻿# menv-cli
 
 `mm` is a profile manager for AI CLI tools.
 
@@ -57,14 +57,14 @@ mm.cmd --help
 After publishing to npm:
 
 ```bash
-npm install -g mm-cli
+npm install -g menv-cli
 mm --help
 ```
 
 Notes:
 
 - On Windows PowerShell with restrictive execution policy, use `mm.cmd`.
-- The npm package name can be `mm-cli` while the executable command remains `mm`.
+- The npm package name is `menv-cli` while the executable command remains `mm`.
 
 ## Quick start
 
@@ -264,3 +264,4 @@ Planned next steps:
 - more client adapters beyond Codex
 - safer secret handling
 - richer profile schema per client
+

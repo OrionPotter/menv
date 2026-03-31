@@ -1,5 +1,5 @@
 ﻿{
-  "name": "mm-cli",
+  "name": "menv-cli",
   "version": "0.1.0",
   "description": "CLI profile manager for Codex and other AI CLIs",
   "type": "commonjs",
@@ -33,3 +33,4 @@
     "typescript": "^5.9.3"
   }
 }
+
