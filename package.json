@@ -1,0 +1,21 @@
+{
+  "name": "mm-cli",
+  "version": "0.1.0",
+  "description": "Model provider manager CLI MVP",
+  "type": "commonjs",
+  "bin": {
+    "mm": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "typescript": "^5.9.3"
+  }
+}

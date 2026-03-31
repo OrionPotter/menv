@@ -1,0 +1,4 @@
+﻿node_modules/
+dist/
+.tmpappdata/
+.mm.json
