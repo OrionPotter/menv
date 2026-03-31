@@ -1,6 +1,10 @@
 ﻿{
   "name": "@orionpotter/menv",
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OrionPotter/menv"
+  },
   "description": "CLI profile manager for Codex and other AI CLIs",
   "type": "commonjs",
   "bin": {
