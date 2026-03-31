@@ -1,68 +1,54 @@
-export type ProviderName = "openai" | "anthropic" | "openrouter" | string;
-
-export interface ProviderConfig {
-  apiKeyEnv?: string;
-  apiKey?: string;
+﻿export interface ProfileConfig {
+  provider?: string;
   baseURL?: string;
-  defaultModel?: string;
+  apiKey?: string;
+  apiKeyEnv?: string;
+  model?: string;
+  reasoningEffort?: string;
   organization?: string;
   region?: string;
   deployment?: string;
   headers?: Record<string, string>;
+  extra?: Record<string, string>;
 }
 
 export interface GlobalConfig {
-  defaultTarget?: string;
-  providers: Record<string, ProviderConfig>;
+  defaultClient: string;
+  currentProfiles: Record<string, string>;
+  profiles: Record<string, ProfileConfig>;
   aliases: Record<string, string>;
 }
 
 export interface ProjectConfig {
-  target?: string;
+  profile?: string;
 }
 
-export interface ResolvedTarget {
-  provider?: string;
-  model?: string;
-  apiKeyEnv?: string;
-  apiKey?: string;
-  apiKeyPresent: boolean;
-  baseURL?: string;
-  organization?: string;
-  region?: string;
-  deployment?: string;
+export interface ResolvedProfile {
+  client: string;
+  profileName: string;
+  profile: ProfileConfig;
   resolvedFrom: {
-    target: string;
-    model: string;
-    apiKeyEnv: string;
-    apiKey: string;
-    baseURL: string;
-    organization: string;
-    region: string;
-    deployment: string;
+    profileName: string;
   };
 }
 
-export interface ModelInfo {
-  id: string;
-  name?: string;
-  description?: string;
+export interface ClientRuntimeState {
+  client: string;
+  configPath: string;
+  values: Record<string, string>;
 }
 
-export interface RunTextInput {
-  prompt: string;
-  target: ResolvedTarget;
+export interface ClientApplyResult {
+  client: string;
+  configPath: string;
+  updatedKeys: string[];
+  backupPath?: string;
 }
 
-export interface RunTextResult {
-  provider: string;
-  model: string;
-  text: string;
-  requestId?: string;
-  usage?: {
-    inputTokens?: number;
-    outputTokens?: number;
-  };
+export interface ClientRollbackResult {
+  client: string;
+  configPath: string;
+  backupPath: string;
 }
 
 export interface ValidationIssue {
@@ -70,14 +56,12 @@ export interface ValidationIssue {
   message: string;
 }
 
-export interface ValidationResult {
-  ok: boolean;
-  issues: ValidationIssue[];
-}
-
-export interface ProviderAdapter {
+export interface ClientAdapter {
   readonly name: string;
-  validate(target: ResolvedTarget): ValidationResult;
-  listModels(target: ResolvedTarget): Promise<ModelInfo[]>;
-  runText(input: RunTextInput): Promise<RunTextResult>;
+  getConfigPath(): string;
+  readState(): Promise<ClientRuntimeState>;
+  applyProfile(profileName: string, profile: ProfileConfig): Promise<ClientApplyResult>;
+  rollback(): Promise<ClientRollbackResult>;
+  compareProfile(state: ClientRuntimeState, profile: ProfileConfig): ValidationIssue[];
+  validateProfile(profile: ProfileConfig): ValidationIssue[];
 }

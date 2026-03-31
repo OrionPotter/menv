@@ -1,8 +1,8 @@
 ﻿import { ConfigStore } from "./config/store";
 import { Resolver } from "./core/resolver";
 import { ConfigError, MmError } from "./errors";
-import { printConfig, printCurrent, printDoctor, printModels, printRunResult, printWhich } from "./output";
-import { getProviderAdapter, listProviderNames } from "./providers";
+import { getClientAdapter, listClientNames } from "./clients";
+import { printApplyResult, printConfig, printCurrent, printIssues, printList, printRollbackResult, printWhich } from "./output";
 
 interface ParsedArgs {
   positionals: string[];
@@ -47,24 +47,29 @@ function requirePositional(value: string | undefined, message: string): string {
 }
 
 function printHelp(): void {
-  console.log(`mm - model provider manager
+  console.log(`mm - client config manager
 
 Commands:
   mm list
-  mm current
-  mm which
-  mm use <target> [--project]
-  mm models [provider]
-  mm run <prompt> [--target provider/model]
-  mm doctor [--ping]
-  mm add <provider> [--api-key-env NAME] [--base-url URL] [--default-model MODEL]
-  mm remove <provider>
+  mm clients
+  mm current [--client codex]
+  mm which [--client codex]
+  mm use <profile> [--client codex] [--project]
+  mm sync [--client codex]
+  mm doctor [--client codex]
+  mm rollback [--client codex]
+  mm add <profile> --provider NAME --model MODEL --base-url URL [--api-key KEY] [--api-key-env ENV]
+  mm remove <profile>
   mm config set <key> <value>
   mm config get <key>
   mm config list
   mm alias list
-  mm alias set <name> <provider/model>
+  mm alias set <name> <profile>
   mm alias remove <name>`);
+}
+
+function getClientName(flagValue: string | undefined, storeDefault: string): string {
+  return flagValue ?? storeDefault;
 }
 
 export async function runCli(argv: string[]): Promise<void> {
@@ -72,6 +77,8 @@ export async function runCli(argv: string[]): Promise<void> {
   const resolver = new Resolver(store);
   const [command, ...rest] = argv;
   const parsed = parseArgs(rest);
+  const config = await store.readGlobalConfig();
+  const clientName = getClientName(asString(parsed.flags.client), config.defaultClient);
 
   switch (command) {
     case undefined:
@@ -79,93 +86,92 @@ export async function runCli(argv: string[]): Promise<void> {
     case "--help":
       printHelp();
       return;
+    case "clients": {
+      for (const client of listClientNames()) {
+        console.log(client);
+      }
+      return;
+    }
     case "list": {
-      const config = await store.readGlobalConfig();
-      console.log("providers:");
-      for (const name of listProviderNames()) {
-        const provider = config.providers[name];
-        console.log(`  ${name}${provider?.defaultModel ? ` -> ${provider.defaultModel}` : ""}`);
-      }
-      console.log("aliases:");
-      for (const [name, target] of Object.entries(config.aliases)) {
-        console.log(`  ${name} -> ${target}`);
-      }
+      printList(config);
       return;
     }
     case "current": {
-      const target = await resolver.resolveCurrentTarget();
-      printCurrent(target);
+      const resolved = await resolver.resolveProfile({ client: clientName });
+      const state = await getClientAdapter(clientName).readState();
+      printCurrent(resolved, state);
       return;
     }
     case "which": {
-      const target = await resolver.resolveCurrentTarget();
-      printWhich(target);
+      const resolved = await resolver.resolveProfile({ client: clientName });
+      const state = await getClientAdapter(clientName).readState();
+      printWhich(resolved, state);
       return;
     }
     case "use": {
-      const target = requirePositional(parsed.positionals[0], "Usage: mm use <provider/model>");
+      const profileName = requirePositional(parsed.positionals[0], "Usage: mm use <profile>");
       const scope = parsed.flags.project ? "project" : "global";
-      await store.setDefaultTarget(target, scope);
-      const resolved = await resolver.resolveCurrentTarget();
-      console.log(`updated ${scope} target to ${target}`);
-      printCurrent(resolved);
-      return;
-    }
-    case "models": {
-      const providerName = parsed.positionals[0] ?? (await resolver.resolveCurrentTarget()).provider;
-      if (!providerName) {
-        throw new ConfigError("No provider resolved for `mm models`.");
+      await store.setCurrentProfile(clientName, profileName, scope);
+      const client = getClientAdapter(clientName);
+      const resolved = await resolver.resolveProfile({ client: clientName });
+      const validationIssues = client.validateProfile(resolved.profile).filter((issue) => issue.level === "error");
+      if (validationIssues.length > 0) {
+        printIssues(validationIssues);
+        throw new ConfigError("Profile validation failed.");
       }
-      const target = await resolver.resolveCurrentTarget({ targetOverride: providerName });
-      const adapter = getProviderAdapter(providerName);
-      const models = await adapter.listModels(target);
-      printModels(models);
+      const result = await client.applyProfile(resolved.profileName, resolved.profile);
+      console.log(`updated ${scope} profile for ${clientName} to ${profileName}`);
+      printApplyResult(result);
       return;
     }
-    case "run": {
-      const prompt = requirePositional(parsed.positionals[0], "Usage: mm run <prompt>");
-      const target = await resolver.resolveCurrentTarget({ targetOverride: asString(parsed.flags.target) });
-      const adapter = getProviderAdapter(target.provider ?? "");
-      const result = await adapter.runText({ prompt, target });
-      printRunResult(result);
+    case "sync": {
+      const client = getClientAdapter(clientName);
+      const resolved = await resolver.resolveProfile({ client: clientName });
+      const validationIssues = client.validateProfile(resolved.profile).filter((issue) => issue.level === "error");
+      if (validationIssues.length > 0) {
+        printIssues(validationIssues);
+        throw new ConfigError("Profile validation failed.");
+      }
+      const result = await client.applyProfile(resolved.profileName, resolved.profile);
+      printApplyResult(result);
       return;
     }
     case "doctor": {
-      const target = await resolver.resolveCurrentTarget();
-      const adapter = getProviderAdapter(target.provider ?? "");
-      const validation = adapter.validate(target);
-      const issues = [...validation.issues];
-      if (parsed.flags.ping && validation.ok) {
-        try {
-          await adapter.listModels(target);
-          issues.push({ level: "info", message: "Provider ping succeeded." });
-        } catch (error) {
-          issues.push({
-            level: "error",
-            message: error instanceof Error ? error.message : "Provider ping failed."
-          });
-        }
-      }
-      printDoctor(issues);
+      const client = getClientAdapter(clientName);
+      const resolved = await resolver.resolveProfile({ client: clientName });
+      const state = await client.readState();
+      const issues = [
+        ...client.validateProfile(resolved.profile),
+        ...client.compareProfile(state, resolved.profile)
+      ];
+      printIssues(issues);
+      return;
+    }
+    case "rollback": {
+      const result = await getClientAdapter(clientName).rollback();
+      printRollbackResult(result);
       return;
     }
     case "add": {
-      const provider = requirePositional(parsed.positionals[0], "Usage: mm add <provider>");
-      await store.upsertProvider(provider, {
-        apiKeyEnv: asString(parsed.flags["api-key-env"]),
+      const profileName = requirePositional(parsed.positionals[0], "Usage: mm add <profile> --provider NAME --model MODEL --base-url URL");
+      await store.upsertProfile(profileName, {
+        provider: asString(parsed.flags.provider),
+        model: asString(parsed.flags.model),
         baseURL: asString(parsed.flags["base-url"]),
-        defaultModel: asString(parsed.flags["default-model"]),
+        apiKey: asString(parsed.flags["api-key"]),
+        apiKeyEnv: asString(parsed.flags["api-key-env"]),
+        reasoningEffort: asString(parsed.flags["reasoning-effort"]),
         organization: asString(parsed.flags.organization),
         region: asString(parsed.flags.region),
         deployment: asString(parsed.flags.deployment)
       });
-      console.log(`provider ${provider} updated`);
+      console.log(`profile ${profileName} updated`);
       return;
     }
     case "remove": {
-      const provider = requirePositional(parsed.positionals[0], "Usage: mm remove <provider>");
-      await store.removeProvider(provider);
-      console.log(`provider ${provider} removed`);
+      const profileName = requirePositional(parsed.positionals[0], "Usage: mm remove <profile>");
+      await store.removeProfile(profileName);
+      console.log(`profile ${profileName} removed`);
       return;
     }
     case "config": {
@@ -184,7 +190,6 @@ export async function runCli(argv: string[]): Promise<void> {
         return;
       }
       if (subcommand === "list") {
-        const config = await store.readGlobalConfig();
         printConfig(config);
         return;
       }
@@ -193,17 +198,16 @@ export async function runCli(argv: string[]): Promise<void> {
     case "alias": {
       const subcommand = parsed.positionals[0];
       if (subcommand === "list") {
-        const config = await store.readGlobalConfig();
         for (const [name, target] of Object.entries(config.aliases)) {
           console.log(`${name}: ${target}`);
         }
         return;
       }
       if (subcommand === "set") {
-        const name = requirePositional(parsed.positionals[1], "Usage: mm alias set <name> <provider/model>");
-        const target = requirePositional(parsed.positionals[2], "Usage: mm alias set <name> <provider/model>");
-        await store.setAlias(name, target);
-        console.log(`alias ${name} -> ${target}`);
+        const name = requirePositional(parsed.positionals[1], "Usage: mm alias set <name> <profile>");
+        const profileName = requirePositional(parsed.positionals[2], "Usage: mm alias set <name> <profile>");
+        await store.setAlias(name, profileName);
+        console.log(`alias ${name} -> ${profileName}`);
         return;
       }
       if (subcommand === "remove") {

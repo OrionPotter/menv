@@ -2,27 +2,12 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readJsonFile, writeJsonFile, findUp } from "../utils/fs";
-import { GlobalConfig, ProjectConfig, ProviderConfig } from "../types";
+import { GlobalConfig, ProfileConfig, ProjectConfig } from "../types";
 
 const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
-  defaultTarget: undefined,
-  providers: {
-    openai: {
-      apiKeyEnv: "OPENAI_API_KEY",
-      baseURL: "https://api.openai.com/v1",
-      defaultModel: "gpt-4.1-mini"
-    },
-    anthropic: {
-      apiKeyEnv: "ANTHROPIC_API_KEY",
-      baseURL: "https://api.anthropic.com/v1",
-      defaultModel: "claude-sonnet-4-20250514"
-    },
-    openrouter: {
-      apiKeyEnv: "OPENROUTER_API_KEY",
-      baseURL: "https://openrouter.ai/api/v1",
-      defaultModel: "deepseek/deepseek-chat"
-    }
-  },
+  defaultClient: "codex",
+  currentProfiles: {},
+  profiles: {},
   aliases: {}
 };
 
@@ -57,37 +42,43 @@ export class ConfigStore {
     await writeJsonFile(this.getProjectConfigPath(startDir), config);
   }
 
-  async setDefaultTarget(target: string, scope: "global" | "project"): Promise<void> {
+  async setCurrentProfile(client: string, profileName: string, scope: "global" | "project"): Promise<void> {
     if (scope === "project") {
       const projectConfig = (await this.readProjectConfig()) ?? {};
-      projectConfig.target = target;
+      projectConfig.profile = profileName;
       await this.writeProjectConfig(projectConfig);
       return;
     }
 
     const globalConfig = await this.readGlobalConfig();
-    globalConfig.defaultTarget = target;
+    globalConfig.currentProfiles[client] = profileName;
     await this.writeGlobalConfig(globalConfig);
   }
 
-  async upsertProvider(provider: string, config: ProviderConfig): Promise<void> {
+  async upsertProfile(name: string, profile: ProfileConfig): Promise<void> {
     const globalConfig = await this.readGlobalConfig();
-    globalConfig.providers[provider] = {
-      ...globalConfig.providers[provider],
-      ...config
+    globalConfig.profiles[name] = {
+      ...globalConfig.profiles[name],
+      ...profile
     };
     await this.writeGlobalConfig(globalConfig);
   }
 
-  async removeProvider(provider: string): Promise<void> {
+  async removeProfile(name: string): Promise<void> {
     const globalConfig = await this.readGlobalConfig();
-    delete globalConfig.providers[provider];
+    delete globalConfig.profiles[name];
+    for (const client of Object.keys(globalConfig.currentProfiles)) {
+      if (globalConfig.currentProfiles[client] === name) {
+        delete globalConfig.currentProfiles[client];
+      }
+    }
+    delete globalConfig.aliases[name];
     await this.writeGlobalConfig(globalConfig);
   }
 
-  async setAlias(name: string, target: string): Promise<void> {
+  async setAlias(name: string, profileName: string): Promise<void> {
     const globalConfig = await this.readGlobalConfig();
-    globalConfig.aliases[name] = target;
+    globalConfig.aliases[name] = profileName;
     await this.writeGlobalConfig(globalConfig);
   }
 
@@ -126,10 +117,14 @@ export class ConfigStore {
 
   private mergeGlobalConfig(config?: GlobalConfig): GlobalConfig {
     return {
-      defaultTarget: config?.defaultTarget ?? DEFAULT_GLOBAL_CONFIG.defaultTarget,
-      providers: {
-        ...DEFAULT_GLOBAL_CONFIG.providers,
-        ...(config?.providers ?? {})
+      defaultClient: config?.defaultClient ?? DEFAULT_GLOBAL_CONFIG.defaultClient,
+      currentProfiles: {
+        ...DEFAULT_GLOBAL_CONFIG.currentProfiles,
+        ...(config?.currentProfiles ?? {})
+      },
+      profiles: {
+        ...DEFAULT_GLOBAL_CONFIG.profiles,
+        ...(config?.profiles ?? {})
       },
       aliases: {
         ...DEFAULT_GLOBAL_CONFIG.aliases,
@@ -138,4 +133,3 @@ export class ConfigStore {
     };
   }
 }
-

@@ -1,16 +1,30 @@
-{
+﻿{
   "name": "mm-cli",
   "version": "0.1.0",
-  "description": "Model provider manager CLI MVP",
+  "description": "CLI profile manager for Codex and other AI CLIs",
   "type": "commonjs",
   "bin": {
     "mm": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run check && npm run build",
     "start": "node dist/index.js"
   },
+  "keywords": [
+    "cli",
+    "codex",
+    "config",
+    "provider-manager",
+    "npm"
+  ],
+  "license": "MIT",
   "engines": {
     "node": ">=20"
   },
