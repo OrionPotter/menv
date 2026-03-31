@@ -1,5 +1,5 @@
 ﻿{
-  "name": "menv-cli",
+  "name": "@orionpotter/menv",
   "version": "0.1.0",
   "description": "CLI profile manager for Codex and other AI CLIs",
   "type": "commonjs",
